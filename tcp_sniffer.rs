@@ -2,10 +2,22 @@ use etherparse::{InternetSlice, SlicedPacket, TransportSlice};
 use pcap::{Capture, Device};
 use rusqlite::Connection;
 use std::collections::HashMap;
+use std::io::{stdout, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+// --- ANSI COLOR & EFFECT CONSTANTS ---
+const COLOR_RESET: &str = "\x1b[0m";
+const ANSI_BLINK: &str = "\x1b[5m";
+const ANSI_BLINK_OFF: &str = "\x1b[25m";
+
+const ALERT_CYAN: &str = "\x1b[36;1m";    // Recon: Port Scans
+const ALERT_YELLOW: &str = "\x1b[33;1m";   // Warning: SYN Floods
+const ALERT_MAGENTA: &str = "\x1b[35;1m";  // Attack: Brute Force
+const ALERT_RED: &str = "\x1b[31;1m";      // Violation: Cleartext
+const ALERT_FATAL: &str = "\x1b[41;37;5;1m"; // Breach: Reverse Shell
 
 pub struct TcpSniffer {
     interface_name: String,
@@ -14,7 +26,6 @@ pub struct TcpSniffer {
 
 impl TcpSniffer {
     /// Creates a new sniffer.
-    /// Note: On Windows, interfaces are often UUIDs. Use `Device::list()` to find the exact name.
     pub fn new(interface: &str) -> Self {
         Self {
             interface_name: interface.to_string(),
@@ -44,7 +55,7 @@ impl TcpSniffer {
                 }
             };
 
-            // OPTIMIZATION: Write-Ahead Logging for massively faster packet inserts
+            // OPTIMIZATION: Write-Ahead Logging
             if let Err(e) = conn.execute_batch(
                 "PRAGMA journal_mode = WAL;
                  PRAGMA synchronous = NORMAL;
@@ -93,7 +104,7 @@ impl TcpSniffer {
                             let mut src_ip = String::new();
                             let mut dst_ip = String::new();
 
-                            if let Some(net) = value.net {
+                            if let Some(net) = value.ip {
                                 match net {
                                     InternetSlice::Ipv4(ipv4, _) => {
                                         src_ip = ipv4.source_addr().to_string();
@@ -110,7 +121,6 @@ impl TcpSniffer {
                             let mut dst_port = 0u16;
                             let protocol = "TCP";
                             
-                            // Initialize variables for flags and payload
                             let mut syn_flag = false;
                             let mut ack_flag = false;
                             let mut payload: &[u8] = &[];
@@ -119,11 +129,9 @@ impl TcpSniffer {
                                 if let TransportSlice::Tcp(tcp) = transport {
                                     src_port = tcp.source_port();
                                     dst_port = tcp.destination_port();
-                                    
-                                    // Extract flags and payload
                                     syn_flag = tcp.syn();
                                     ack_flag = tcp.ack();
-                                    payload = tcp.payload();
+                                    payload = value.payload;
                                 }
                             }
 
@@ -152,19 +160,25 @@ impl TcpSniffer {
                             let count = active_flows.entry(flow_id.clone()).or_insert(0);
                             *count += 1;
 
-                            // --- THREAT DETECTION LOGIC ---
+                            // --- THREAT DETECTION LOGIC (WITH FLASHING IPS) ---
 
                             // 1. Cleartext Protocol Violation (FTP/Telnet)
                             if dst_port == 21 || dst_port == 23 || src_port == 21 || src_port == 23 {
-                                callback(format!("   [!!!] {ALERT_RED}UNSAFE PROTOCOL DETECTED{COLOR_RESET}: {} -> {}:{}", src_ip, dst_ip, dst_port));
+                                callback(format!(
+                                    "   [!!!] {}UNSAFE PROTOCOL DETECTED{}: {}{}{}{} -> {}:{}",
+                                    ALERT_RED, COLOR_RESET, ANSI_BLINK, src_ip, ANSI_BLINK_OFF, COLOR_RESET, dst_ip, dst_port
+                                ));
                             }
                             
                             // 2. SYN Flood (DoS)
                             if syn_flag && !ack_flag {
                                 let syn_count = syn_tracker.entry(src_ip.clone()).or_insert(0);
                                 *syn_count += 1;
-                                if *syn_count > 100 && *syn_count % 100 == 1 { // Throttled alert
-                                    callback(format!("   [!!!] {ALERT_YELLOW}SYN FLOOD DETECTED{COLOR_RESET} FROM {}", src_ip));
+                                if *syn_count > 100 && *syn_count % 100 == 1 {
+                                    callback(format!(
+                                        "   [!!!] {}SYN FLOOD DETECTED{} FROM {}{}{}{}",
+                                        ALERT_YELLOW, COLOR_RESET, ANSI_BLINK, src_ip, ANSI_BLINK_OFF, COLOR_RESET
+                                    ));
                                 }
                             }
 
@@ -173,7 +187,10 @@ impl TcpSniffer {
                             if !scanned_ports.contains(&dst_port) {
                                 scanned_ports.push(dst_port);
                                 if scanned_ports.len() > 15 && scanned_ports.len() % 15 == 1 {
-                                    callback(format!("   [!!!] {ALERT_CYAN}PORT SCAN DETECTED{COLOR_RESET} FROM {}", src_ip));
+                                    callback(format!(
+                                        "   [!!!] {}PORT SCAN DETECTED{} FROM {}{}{}{}",
+                                        ALERT_CYAN, COLOR_RESET, ANSI_BLINK, src_ip, ANSI_BLINK_OFF, COLOR_RESET
+                                    ));
                                 }
                             }
 
@@ -182,7 +199,10 @@ impl TcpSniffer {
                                 let bf_count = brute_force_tracker.entry(src_ip.clone()).or_insert(0);
                                 *bf_count += 1;
                                 if *bf_count > 10 && *bf_count % 10 == 1 {
-                                    callback(format!("   [!!!] {ALERT_MAGENTA}BRUTE FORCE ATTEMPT{COLOR_RESET} FROM {} ON PORT {}", src_ip, dst_port));
+                                    callback(format!(
+                                        "   [!!!] {}BRUTE FORCE ATTEMPT{} FROM {}{}{}{} ON PORT {}",
+                                        ALERT_MAGENTA, COLOR_RESET, ANSI_BLINK, src_ip, ANSI_BLINK_OFF, COLOR_RESET, dst_port
+                                    ));
                                 }
                             }
 
@@ -190,7 +210,10 @@ impl TcpSniffer {
                             if !payload.is_empty() {
                                 let payload_str = String::from_utf8_lossy(payload).to_lowercase();
                                 if payload_str.contains("cmd.exe") || payload_str.contains("/bin/bash") || payload_str.contains("powershell") {
-                                    callback(format!("   [!!!] {ALERT_FATAL}REVERSE SHELL ACTIVE{COLOR_RESET} : {} -> {}", src_ip, dst_ip));
+                                    callback(format!(
+                                        "   [!!!] {}REVERSE SHELL ACTIVE{} : {}{}{}{} -> {}",
+                                        ALERT_FATAL, COLOR_RESET, ANSI_BLINK, src_ip, ANSI_BLINK_OFF, COLOR_RESET, dst_ip
+                                    ));
                                 }
                             }
 
@@ -222,26 +245,25 @@ impl TcpSniffer {
 }
 
 fn main() {
-    // Note: To find your exact interface name, you can uncomment this:
-    // for device in Device::list().unwrap() {
-    //     println!("Name: {}, Desc: {:?}", device.name, device.desc);
-    // }
+    let devices = Device::list().unwrap();
+    
+    // Strict selection: Hunt specifically for the physical Wi-Fi adapter
+    let default_device = devices.iter()
+        .find(|d| {
+            let desc = d.desc.as_deref().unwrap_or("");
+            desc.contains("Wi-Fi") || desc.contains("Wireless")
+        })
+        .unwrap_or(&devices[0]);
+    
+    let mut sniffer = TcpSniffer::new(default_device.name.as_str());
 
-    // IMPORTANT: Do not use "any" on Linux, as it uses Linux Cooked Capture (SLL)
-    // instead of standard Ethernet headers, which causes the parser to fail.
-    // Replace "eth0" with your actual network interface (e.g., "en0", "wlan0", or a Windows UUID).
-    let mut sniffer = TcpSniffer::new("eth0");
-
-    println!("Starting sniffer... Press Ctrl+C to stop.");
+    println!("Starting sniffer on {}... Press Ctrl+C to stop.", default_device.name);
 
     sniffer.start(|log_line| {
         println!("{}", log_line);
     });
 
-    thread::sleep(std::time::Duration::from_secs(10));
-
-    println!("Stopping sniffer...");
-    sniffer.stop();
-
-    thread::sleep(std::time::Duration::from_millis(200));
+    loop {
+        thread::sleep(Duration::from_secs(1));
+    }
 }
