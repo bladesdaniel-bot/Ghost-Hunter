@@ -1,0 +1,13 @@
+[package]
+name = "tcp_sniffer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pcap = "0.11.0"          # Native OS packet capture (replaces pyshark)
+etherparse = "0.13.0"    # Lightning-fast packet header parser
+rusqlite = { version = "0.29.0", features = ["bundled"] }      # SQLite Vault (Bundled C-source to fix MSVC linker error)
+  
+[[bin]]
+name = "tcp_sniffer"
+path = "src/tcp_sniffer.rs"
