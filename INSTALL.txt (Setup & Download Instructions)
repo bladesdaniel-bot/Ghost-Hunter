@@ -1,0 +1,79 @@
+============================================================
+ CYBERSECURITY MULTI-AGENT INFRASTRUCTURE - SETUP GUIDE
+============================================================
+
+This program relies on three different programming languages and native OS networking tools. Please follow these steps carefully to set up your environment.
+
+------------------------------------------------------------
+ PART 1: SYSTEM REQUIREMENTS & PREREQUISITES
+------------------------------------------------------------
+1. Operating System: Windows 10/11 (Recommended for full GUI and netsh firewall features).
+2. Administrator Privileges: You MUST have Admin rights to capture packets and modify firewall rules.
+
+------------------------------------------------------------
+ PART 2: DOWNLOAD CORE COMPILERS & ENGINES
+------------------------------------------------------------
+You must download and install the following toolchains:
+
+1. Python (3.9 or higher): 
+   - Download: https://www.python.org/downloads/
+   - IMPORTANT: Check the box that says "Add Python to PATH" during installation.
+
+2. Go (Golang):
+   - Download: https://go.dev/dl/
+   - Follow the default installation instructions.
+
+3. Rust & Cargo:
+   - Download: https://rustup.rs/
+   - Download and run `rustup-init.exe`. Follow the default prompts to install the Rust compiler and Cargo package manager.
+
+4. Nmap (Network Mapper):
+   - Download: https://nmap.org/download.html
+   - Install it and ensure Nmap is added to your system PATH. 
+   - NOTE: The installer usually includes Npcap. Make sure to check "Install Npcap in WinPcap API-compatible Mode".
+
+5. Npcap SDK (For compiling the Rust sniffer):
+   - Download: https://npcap.com/#download
+   - Look for the "Npcap SDK" zip file.
+   - Extract the zip file and rename the folder to exactly "npcap-sdk".
+   - Place this "npcap-sdk" folder directly into the root directory of this project.
+
+------------------------------------------------------------
+ PART 3: INSTALL PYTHON DEPENDENCIES
+------------------------------------------------------------
+Open your Command Prompt or PowerShell and run the following command to install the required Python UI and networking libraries:
+
+    pip install customtkinter Pillow requests dnspython
+
+------------------------------------------------------------
+ PART 4: COMPILE THE BACKEND ENGINES
+------------------------------------------------------------
+Open your terminal and navigate to the folder where you extracted this project.
+
+1. Compile the Go Engine:
+   Run the following command in the root of the project:
+   
+       go build -o SecurityScanner.exe main.go
+
+   (This will create the SecurityScanner.exe file that the Python UI needs).
+
+2. Build the Rust Engine:
+   Ensure your `npcap-sdk` folder is in the root directory, then run:
+
+       cargo build --release
+
+   (This ensures all crates like pcap, etherparse, and rusqlite download and compile successfully).
+
+------------------------------------------------------------
+ PART 5: RUNNING THE APPLICATION
+------------------------------------------------------------
+Because this tool intercepts raw network traffic and manipulates the host firewall, it CANNOT be run as a normal user.
+
+1. Open your Start Menu, type "cmd" or "powershell".
+2. Right-click it and select "Run as Administrator".
+3. Navigate to the project folder (e.g., `cd C:\path\to\project`).
+4. Launch the dashboard:
+
+       python dashboard.py
+
+The holographic UI will load, and your worker agents are now ready to scan and defend your network.
