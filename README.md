@@ -13,6 +13,7 @@ This tool breaks down complex security operations into three distinct language e
 ## ✨ Core Features
 
 *   **Holographic GUI Dashboard:** Built with CustomTkinter, featuring real-time interactive threat consoles, clickable IP targeting, and custom multi-frame animations (breathing backgrounds, EKG pings, rotating shields).
+*   **Floating Geolocation HUD:** Reroutes IP location telemetry into a dedicated, 90%-transparent floating popup window pinned to the top-right of the display. It automatically extracts GPS coordinates from the Go backend and features a dynamic, one-click button to open the target's physical location directly in Google Maps.
 *   **Live TCP Packet Sniffing & Threat Detection:** Rust-powered packet capture that streams raw network telemetry to the Python UI, instantly flagging threat signatures including:
     *   SYN Floods (DoS attacks)
     *   Aggressive Port Scans
