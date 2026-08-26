@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -246,16 +248,23 @@ func (s *SecurityScanner) blockIP(ipAddress string) {
 	var cmd *exec.Cmd
 
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name=Block_"+ipAddress, "dir=in", "action=block", "remoteip="+ipAddress)
+		// 1. Wipe any existing rules to prevent duplicates
+		exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name=Block_"+ipAddress).Run()
+
+		// 2. Block INBOUND traffic
+		exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name=Block_"+ipAddress, "dir=in", "action=block", "remoteip="+ipAddress).Run()
+
+		// 3. Block OUTBOUND traffic (This kills the ping!)
+		cmd = exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name=Block_"+ipAddress, "dir=out", "action=block", "remoteip="+ipAddress)
 	} else {
 		cmd = exec.Command("sudo", "iptables", "-A", "INPUT", "-s", ipAddress, "-j", "DROP")
 	}
 
 	err := cmd.Run()
 	if err != nil {
-		fmt.Printf("❌ Failed to block IP. (Are you running this script as Root/Admin?) Error: %v\n", err)
+		fmt.Printf("[ERROR] Failed to block IP. (Are you running this script as Root/Admin?) Error: %v\n", err)
 	} else {
-		fmt.Printf("✅ Successfully blocked %s!\n", ipAddress)
+		fmt.Printf("[SUCCESS] Successfully blocked %s!\n", ipAddress)
 	}
 }
 
@@ -279,18 +288,118 @@ func (s *SecurityScanner) unblockIP(ipAddress string) {
 	}
 }
 
+// IPInfo represents the JSON response from ipinfo.io
+type IPInfo struct {
+	IP       string `json:"ip"`
+	City     string `json:"city"`
+	Region   string `json:"region"`
+	Country  string `json:"country"`
+	Location string `json:"loc"`
+	Org      string `json:"org"`
+}
+
+// locateIP fetches geographical data for an IP address
+func (s *SecurityScanner) locateIP(ipAddress string) {
+	fmt.Printf("Locating IP: %s...\n", ipAddress)
+	resp, err := http.Get("https://ipinfo.io/" + ipAddress + "/json")
+	if err != nil {
+		fmt.Printf("❌ Failed to reach geolocation API: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var info IPInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		fmt.Printf("❌ Failed to parse geolocation data: %v\n", err)
+		return
+	}
+
+	fmt.Println("============================================================")
+	fmt.Println("📍 GEOLOCATION RESULTS")
+	fmt.Println("============================================================")
+	fmt.Printf("   IP:       %s\n", info.IP)
+	fmt.Printf("   City:     %s\n", info.City)
+	fmt.Printf("   Region:   %s\n", info.Region)
+	fmt.Printf("   Country:  %s\n", info.Country)
+	fmt.Printf("   ISP/Org:  %s\n", info.Org)
+	if info.Location != "" {
+		fmt.Printf("   Map:      https://www.google.com/maps/search/?api=1&query=%s\n", info.Location)
+	}
+	fmt.Println("============================================================")
+}
+
+// listBlockedIPs reads the host firewall and extracts all active application block rules
+func (s *SecurityScanner) listBlockedIPs() {
+	fmt.Println("============================================================")
+	fmt.Println("🛡️  ACTIVE FIREWALL BLOCKS (SYSTEM QUERY)")
+	fmt.Println("============================================================")
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("netsh", "advfirewall", "firewall", "show", "rule", "name=all")
+	} else {
+		cmd = exec.Command("sudo", "iptables", "-L", "INPUT", "-v", "-n")
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		fmt.Printf("❌ Failed to read system firewall rules: %v\n", err)
+		return
+	}
+
+	lines := strings.Split(string(output), "\n")
+	count := 0
+
+	for _, line := range lines {
+		// We only look for rules created by our app (starting with "Block_")
+		if strings.Contains(line, "Rule Name:") && strings.Contains(line, "Block_") {
+			ip := strings.TrimSpace(strings.Split(line, "Block_")[1])
+			fmt.Printf("   🚫 Blocked IP: %s\n", ip)
+			count++
+		}
+	}
+
+	if count == 0 {
+		fmt.Println("   No active IP blocks found by this application.")
+	}
+	fmt.Println("============================================================")
+}
+
+// singlePing performs a real TCP handshake to test if a target is reachable on a specific port
+func (s *SecurityScanner) singlePing(ipAddress string) {
+	fmt.Printf("Sending real TCP ping to %s:443...\n", ipAddress)
+
+	// Try to establish a real TCP connection on HTTPS (Port 443)
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", ipAddress+":443", 3*time.Second)
+
+	if err != nil {
+		// Fallback to Port 80 if 443 fails
+		conn, err = net.DialTimeout("tcp", ipAddress+":80", 3*time.Second)
+	}
+
+	if err != nil {
+		fmt.Printf("[-] Real TCP ping failed: Target port is closed or filtered. Error: %v\n", err)
+	} else {
+		duration := time.Since(start)
+		defer conn.Close()
+		fmt.Printf("[+] Target is truly online and reachable via TCP handshake! (Response time: %v)\n", duration)
+	}
+}
+
 func main() {
 	args := os.Args
 
 	if len(args) < 2 {
 		fmt.Println("Usage:")
-		fmt.Println("  go run security_scanner.go <target> [--port <port1> <port2>] (Run scan)")
-		fmt.Println("  go run security_scanner.go --block <IP>                      (Block IP)")
-		fmt.Println("  go run security_scanner.go --unblock <IP>                    (Unblock IP)")
+		fmt.Println("  go run main.go <target> [--port <port1> <port2>] (Run scan)")
+		fmt.Println("  go run main.go --block <IP>                      (Block IP)")
+		fmt.Println("  go run main.go --unblock <IP>                    (Unblock IP)")
+		fmt.Println("  go run main.go --list                            (List Blocked IPs)")
+		fmt.Println("  go run main.go --locate <IP>                     (Locate IP)")
 		os.Exit(1)
 	}
-
-	// 1. Handle Blocking/Unblocking Commands First
+	// 1. Handle Commands First
 	if args[1] == "--block" {
 		if len(args) < 3 {
 			fmt.Println("❌ Please provide an IP address to block.")
@@ -308,6 +417,32 @@ func main() {
 		}
 		scanner := NewSecurityScanner("")
 		scanner.unblockIP(args[2])
+		return
+	}
+
+	if args[1] == "--locate" {
+		if len(args) < 3 {
+			fmt.Println("❌ Please provide an IP address to locate.")
+			os.Exit(1)
+		}
+		scanner := NewSecurityScanner("")
+		scanner.locateIP(args[2])
+		return
+	}
+
+	if args[1] == "--list" {
+		scanner := NewSecurityScanner("")
+		scanner.listBlockedIPs()
+		return
+	}
+
+	if args[1] == "--ping" {
+		if len(args) < 3 {
+			fmt.Println("❌ Please provide an IP address to ping.")
+			os.Exit(1)
+		}
+		scanner := NewSecurityScanner("")
+		scanner.singlePing(args[2])
 		return
 	}
 
