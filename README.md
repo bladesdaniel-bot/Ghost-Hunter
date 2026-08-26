@@ -1,4 +1,3 @@
-# Ghost-Hunter
 # CyberSecurity Multi-Agent Infrastructure
 
 An advanced, multi-language cybersecurity diagnostic and network analysis toolkit. This project utilizes a multi-agent architectural approach, delegating specific security tasks to specialized backend engines written in Go and Rust, all orchestrated by a sleek, animated Python holographic dashboard.
