@@ -12,12 +12,13 @@ This tool breaks down complex security operations into three distinct language e
 *   **Go (The Executioner):** Handles high-speed concurrent network operations, port scanning, and instant system-level firewall manipulation (blocking/unblocking IPs).
 *   **Rust (The Sniffer):** Provides low-level, memory-safe, and lightning-fast TCP packet capture, threat signature detection, and packet logging using native OS interfaces (Npcap) and a bundled SQLite vault.
 
-## ✨ Core Features & Visual Demonstrations
+## ✨ Core Features
 
 *   **Holographic GUI Dashboard:** Built with CustomTkinter, featuring real-time interactive threat consoles, clickable IP targeting, and custom multi-frame animations (breathing backgrounds, EKG pings, rotating shields).
 
 *   **Floating Geolocation HUD:** Reroutes IP location telemetry into a dedicated, 90%-transparent floating popup window pinned to the top-right of the display. It automatically extracts GPS coordinates from the Go backend and features a dynamic, one-click button to open the target's physical location directly in Google Maps.
-    <video src="Geo-Location.mp4" autoplay loop muted playsinline width="100%"></video>
+
+    <video src="Geo-Locatipn.mp4" autoplay loop muted playsinline width="100%"></video>
 
 *   **Live TCP Packet Sniffing & Threat Detection:** Rust-powered packet capture that streams raw network telemetry to the Python UI, instantly flagging threat signatures including:
     *   SYN Floods (DoS attacks)
@@ -25,15 +26,19 @@ This tool breaks down complex security operations into three distinct language e
     *   Cleartext Protocol Violations (FTP/Telnet)
     *   Brute Force Attempts (SSH, RDP, MySQL)
     *   Reverse Shell Payloads (`cmd.exe`, `/bin/bash`, `powershell`)
+
     <video src="Different%20Kinds%20Of%20Attacks%20Alert.mp4" autoplay loop muted playsinline width="100%"></video>
 
-*   **SQLite Packet Vault & Compilation Evolution:** The Rust engine silently logs all intercepted packet metadata to a high-speed SQLite database (`packet_vault.db`) utilizing Write-Ahead Logging (WAL) for maximum I/O performance.
-    * *Before Adjustments (Compilation debugging phase):*
+*   **SQLite Packet Vault:** The Rust engine silently logs all intercepted packet metadata to a high-speed SQLite database (`packet_vault.db`) utilizing Write-Ahead Logging (WAL) for maximum I/O performance.
+
+    *Before Adjustments:*
     <video src="Before%20Adjustments%20Were%20Made%20To%20Compile%20Tcp%20Packets.mp4" autoplay loop muted playsinline width="100%"></video>
-    * *After Adjustments (Optimized live packet stream):*
+
+    *After Adjustments:*
     <video src="After%20Adjustments%20Were%20Made%20To%20Compile%20Tcp%20Packets.mp4" autoplay loop muted playsinline width="100%"></video>
 
-*   **Automated Firewall Control & Target Management:** Instantly block or unblock active threats across the host operating system (Windows `netsh` or Linux `iptables`) using the Go binary. Demonstrating successful packet block and flow mitigation:
+*   **Automated Firewall Control:** Instantly block or unblock active threats across the host operating system (Windows `netsh` or Linux `iptables`) using the Go binary.
+
     <video src="Blocked%20Ip%20And%20It%20Count%20Come%20Back%20Through%20Successfully.mp4" autoplay loop muted playsinline width="100%"></video>
 
 *   **Comprehensive Vulnerability Probing:**
