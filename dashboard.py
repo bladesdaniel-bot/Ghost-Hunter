@@ -406,7 +406,7 @@ def locate_target():
         popup.geometry(f"{pop_width}x{pop_height}+{x_pos}+{y_pos}")
         
         # Make it 90% opaque (transparent) and lock it on top of the main UI
-        popup.attributes("-alpha", 0.90)
+        popup.attributes("-alpha", 0.70)
         popup.attributes("-topmost", True)
         
         # Popup Title
