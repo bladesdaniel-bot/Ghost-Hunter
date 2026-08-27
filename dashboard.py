@@ -11,6 +11,17 @@ import re
 from PIL import Image, ImageDraw
 import math
 import webbrowser
+import os
+import platform
+
+# --- CROSS-PLATFORM PATH SETUP ---
+# Automatically gets the exact folder where dashboard.py is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Automatically switches between .exe (Windows) and standard binary (Linux/Mac)
+EXE_NAME = "SecurityScanner.exe" if platform.system() == "Windows" else "SecurityScanner"
+GO_SCANNER_PATH = os.path.join(BASE_DIR, EXE_NAME)
+# ---------------------------------
 
 class TCPSniffer:
     def __init__(self, callback_func, interface="any"):
@@ -24,12 +35,12 @@ class TCPSniffer:
             # Launch the Rust compiled engine in the background
             self.process = subprocess.Popen(
                 ["cargo", "run"], 
-                stdin=subprocess.PIPE,   # <--- ADDED: Allows Python to send commands to Rust
+                stdin=subprocess.PIPE, 
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                cwd=r'C:\Users\blade\OneDrive\Desktop\My Projects\CyberSecurity Tool'
+                cwd=BASE_DIR  # <--- REPLACED HARDCODED PATH HERE
             )
             
             # Start background reader so the dashboard doesn't freeze
@@ -309,7 +320,7 @@ def run_port_checker():
     
     def execute_go_backend():
         try:
-            exe_path = r'C:\Users\blade\OneDrive\Desktop\My Projects\CyberSecurity Tool\SecurityScanner.exe'
+            exe_path = GO_SCANNER_PATH
             result = subprocess.run([exe_path, target], capture_output=True, text=True, encoding='utf-8')
             app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
             app.after(0, result_console.see, "end")
@@ -327,7 +338,7 @@ def block_target():
     result_console.insert("end", f"[*] Attempting to block IP: {target}...\n")
     def run_block():
         try:
-            exe_path = r'C:\Users\blade\OneDrive\Desktop\My Projects\CyberSecurity Tool\SecurityScanner.exe'
+            exe_path = GO_SCANNER_PATH
             result = subprocess.run([exe_path, '--block', target], capture_output=True, text=True, encoding='utf-8')
             app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
             app.after(0, result_console.see, "end")
@@ -345,7 +356,7 @@ def unblock_target():
     result_console.insert("end", f"[*] Attempting to unblock IP: {target}...\n")
     def run_unblock():
         try:
-            exe_path = r'C:\Users\blade\OneDrive\Desktop\My Projects\CyberSecurity Tool\SecurityScanner.exe'
+            exe_path = GO_SCANNER_PATH
             result = subprocess.run([exe_path, '--unblock', target], capture_output=True, text=True, encoding='utf-8')
             app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
             app.after(0, result_console.see, "end")
@@ -358,7 +369,7 @@ def list_blocked_targets():
     result_console.insert("end", "[*] Querying Host Firewall for active blocks...\n")
     def run_list():
         try:
-            exe_path = r'C:\Users\blade\OneDrive\Desktop\My Projects\CyberSecurity Tool\SecurityScanner.exe'
+            exe_path = GO_SCANNER_PATH
             result = subprocess.run([exe_path, '--list'], capture_output=True, text=True, encoding='utf-8')
             app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
             app.after(0, result_console.see, "end")
@@ -443,7 +454,7 @@ def locate_target():
     def run_locate():
         import subprocess
         try:
-            exe_path = r'C:\Users\blade\OneDrive\Desktop\My Projects\CyberSecurity Tool\SecurityScanner.exe'
+            exe_path = GO_SCANNER_PATH
             result = subprocess.run([exe_path, '--locate', target], capture_output=True, text=True, encoding='utf-8')
             
             # --- Parse the Go output to extract the Map URL and Coordinates ---
@@ -474,7 +485,7 @@ def single_ping_target():
     result_console.insert("end", f"[*] Executing single test ping against: {target}...\n")
     def run_ping():
         try:
-            exe_path = r'C:\Users\blade\OneDrive\Desktop\My Projects\CyberSecurity Tool\SecurityScanner.exe'
+            exe_path = GO_SCANNER_PATH
             result = subprocess.run([exe_path, '--ping', target], capture_output=True, text=True, encoding='utf-8')
             app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
             app.after(0, result_console.see, "end")
