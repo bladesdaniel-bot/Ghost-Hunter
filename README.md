@@ -58,3 +58,6 @@ This tool breaks down complex security operations into three distinct language e
 *   `main.go`: The Go source code handling port scanning, pings, firewall rules, and geolocation.
 *   `Cargo.toml`, `build.rs`, & `src/tcp_sniffer.rs`: The Rust backend utilizing `pcap`, `etherparse`, and `rusqlite` for live packet analysis.
 *   **Animation Utilities:** Custom Python/Pillow scripts used to surgically remove backgrounds and generate multi-frame animations for the UI elements.
+
+
+
