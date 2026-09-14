@@ -13,11 +13,15 @@ Ghost-Hunter/
 │   └── wpcap/                      # Offline HTML API documentation (Omitted for brevity)
 ├── src/                            # Rust low-level core
 │   └── tcp_sniffer.rs              # High-throughput packet capture & threat engine
+├── Auth_Vault/                     # Secure directory for IAM configuration
+│   └── auth_vault.json             # PBKDF2 HMAC-SHA256 locked master configuration
+├── auth_manager.py                 # Identity Access Management (IAM) security gateway
 ├── build.rs                        # Rust build script targeting npcap-sdk/Lib
 ├── Cargo.toml                      # Rust dependencies & package manifest
 ├── Cargo.lock                      # Deterministic dependency lockfile
 ├── config.py                       # Global network parameters, timeouts, & port lists
 ├── dashboard.py                    # Primary GUI orchestrator & Tkinter HUD
+├── Forensic_Block_Logs.json        # Dynamic 12-hour timestamped active threat and firewall block log
 ├── go.mod                          # Go module definitions
 ├── main.go                         # Go engine (concurrent scanning & firewall manipulation)
 ├── Npcap_Guide.html                # Local setup instructions for driver configuration
