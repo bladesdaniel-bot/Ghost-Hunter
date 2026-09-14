@@ -87,7 +87,7 @@ https://github.com/bladesdaniel-bot/Ghost-Hunter/raw/main/Blocked%20Ip%20And%20I
 *   `Cargo.toml`, `build.rs`, & `src/tcp_sniffer.rs`: The Rust backend utilizing `pcap`, `etherparse`, and `rusqlite` for live packet analysis.
 *   **Animation Utilities:** Custom Python/Pillow scripts used to surgically remove backgrounds and generate multi-frame animations for the UI elements.
 
-## 📂 Codebase Structure
+## 📂 Codebase Structure Tree
 
 Ghost-Hunter/
 ├── Animation file/                 # UI assets and multi-frame animation sequences
