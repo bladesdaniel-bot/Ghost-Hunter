@@ -13,6 +13,105 @@ import math
 import webbrowser
 import os
 import platform
+import sys
+import json
+from datetime import datetime
+from auth_manager import verify_master_access
+
+# Security Gate Enforcement
+if not verify_master_access():
+    sys.exit(0)
+
+# --- ORBITAL POP-UP TRACKER ---
+popup_counter = 0
+
+def show_info_popup(title, info_text):
+    global popup_counter
+    
+    # Create the pop-up window
+    popup = ctk.CTkToplevel()
+    popup.title(title)
+    
+    # --- TRANSPARENCY MATCHING LOCATE IP ---
+    popup.attributes("-alpha", 0.70)  # Adds the 70% opacity glass effect
+    # ---------------------------------------
+    
+    # --- CIRCULAR POSITIONING MATH ---
+    pop_width = 450
+    pop_height = 250
+    screen_width = popup.winfo_screenwidth()
+    screen_height = popup.winfo_screenheight()
+    
+    # Find the dead-center of your monitor
+    center_x = screen_width // 2
+    center_y = screen_height // 2
+    
+    # --- TIGHTER RADIUS SO IT DOESN'T GO OFF SCREEN ---
+    radius = 200  # <--- Changed from 350 to 200!
+    
+    # Shifts the spawn location by 45 degrees around the circle every time a window opens
+    angle = math.radians(popup_counter * 45)
+    
+    # Calculate the exact X and Y coordinates on the invisible circle
+    x = int(center_x + (radius * math.cos(angle)) - (pop_width // 2))
+    y = int(center_y + (radius * math.sin(angle)) - (pop_height // 2))
+    
+    # Lock the size and apply the calculated orbital coordinates
+    popup.geometry(f"{pop_width}x{pop_height}+{x}+{y}")
+    
+    # Tick the counter up so the next window spawns in the next slot!
+    popup_counter += 1
+    # ---------------------------------
+    
+    popup.attributes("-topmost", True)  # Forces the pop-up to stay in front
+
+    # Add a read-only textbox for the information
+    textbox = ctk.CTkTextbox(popup, width=400, height=150, text_color="#00FF00", fg_color="black")
+    textbox.pack(pady=20, padx=20)
+    textbox.insert("0.0", info_text)
+    textbox.configure(state="disabled")  # Locks the text so it can't be edited
+
+    # Add a close button
+    close_btn = ctk.CTkButton(popup, text="Acknowledge", command=popup.destroy)
+    close_btn.pack(pady=5)
+
+def show_firewall_status(action, ip_address, target_button=None, reason="Manual Action"):
+    # Create the floating popup window
+    popup = ctk.CTkToplevel(app)
+    popup.title("Firewall Update")
+    
+    # --- DYNAMIC POSITIONING ALIGNED TO THE BUTTON ---
+    if target_button:
+        btn_x = target_button.winfo_rootx()
+        btn_y = target_button.winfo_rooty()
+        btn_width = target_button.winfo_width()
+        spawn_x = btn_x + (btn_width // 2) - 175
+        spawn_y = btn_y + 45
+        popup.geometry(f"350x180+{spawn_x}+{spawn_y}") # Made slightly taller to fit the new text
+    else:
+        popup.geometry("350x180")
+        
+    popup.attributes("-topmost", True) 
+    popup.grab_set() 
+
+    # --- DYNAMIC FORENSIC MESSAGE ---
+    timestamp = datetime.now().strftime("%m/%d/%Y %I:%M:%S %p")
+    # Color codes: Red for block, Orange for unblock
+    text_color = "#FF4444" if action == "BLOCKED" else "#F0AD4E"
+    
+    message = f"[{timestamp}]\nSuccessfully {action} IP:\n{ip_address}\n\nReason: {reason}"
+    label = ctk.CTkLabel(popup, text=message, font=("Consolas", 13, "bold"), text_color=text_color)
+    label.pack(pady=15)
+
+    # Acknowledge button
+    btn = ctk.CTkButton(popup, text="Acknowledge", command=popup.destroy)
+    btn.pack(pady=5)
+
+# --- PYINSTALLER INTERNAL FOLDER ROUTING ---
+import sys
+# If running as a compiled .exe, force the app to look inside the _internal folder for all files!
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    os.chdir(sys._MEIPASS)
 
 # --- CROSS-PLATFORM PATH SETUP ---
 # Automatically gets the exact folder where dashboard.py is located
@@ -21,6 +120,69 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Automatically switches between .exe (Windows) and standard binary (Linux/Mac)
 EXE_NAME = "SecurityScanner.exe" if platform.system() == "Windows" else "SecurityScanner"
 GO_SCANNER_PATH = os.path.join(BASE_DIR, EXE_NAME)
+
+# --- CROSS-PLATFORM HIDDEN CONSOLE FLAGS ---
+if platform.system() == "Windows":
+    HIDE_WINDOW = {"creationflags": 0x08000000}
+else:
+    HIDE_WINDOW = {}
+# ---------------------------------
+
+# --- FORENSIC LOGGING ENGINE ---
+BLOCK_LOG_FILE = os.path.join(BASE_DIR, "block_log.json")
+
+def log_block_action(ip_address):
+    # 1. Figure out WHY it's being blocked by checking active threats
+    reason = "Manual Administrator Block"
+    
+    # Safely check if active_threats exists before scanning it
+    if 'active_threats' in globals():
+        for text, data in active_threats.items():
+            if data['ip'] == ip_address:
+                if "SYN FLOOD" in text: reason = "SYN FLOOD Attack"
+                elif "PORT SCAN" in text: reason = "Port Scan Probe"
+                elif "UNSAFE PROTOCOL" in text: reason = "Unsafe Protocol Violation"
+                elif "BRUTE FORCE" in text: reason = "Brute Force Attempt"
+                elif "REVERSE SHELL" in text: reason = "Reverse Shell Payload"
+                else: reason = "Automated Threat Detection"
+                break
+
+    # 2. Stamp the time and create the entry
+    log_entry = {
+        "ip": ip_address,
+        "timestamp": datetime.now().strftime("%m/%d/%Y %I:%M:%S %p"),
+        "reason": reason
+    }
+
+    # 3. Read the old logs (if they exist)
+    logs = []
+    if os.path.exists(BLOCK_LOG_FILE):
+        try:
+            with open(BLOCK_LOG_FILE, "r") as f:
+                logs = json.load(f)
+        except Exception:
+            pass
+
+    # 4. Remove any duplicate old logs for this IP, append the new one, and save
+    logs = [entry for entry in logs if entry["ip"] != ip_address]
+    logs.append(log_entry)
+
+    with open(BLOCK_LOG_FILE, "w") as f:
+        json.dump(logs, f, indent=4)
+        
+    return reason # <--- THIS IS THE NEW LINE
+
+def remove_block_log(ip_address):
+    # When an IP is unblocked, scrub it from the forensic log
+    if os.path.exists(BLOCK_LOG_FILE):
+        try:
+            with open(BLOCK_LOG_FILE, "r") as f:
+                logs = json.load(f)
+            logs = [entry for entry in logs if entry["ip"] != ip_address]
+            with open(BLOCK_LOG_FILE, "w") as f:
+                json.dump(logs, f, indent=4)
+        except Exception:
+            pass
 # ---------------------------------
 
 class TCPSniffer:
@@ -32,15 +194,21 @@ class TCPSniffer:
     def start(self):
         if not self.is_sniffing:
             self.is_sniffing = True
-            # Launch the Rust compiled engine in the background
+            
+            # Use the compiled Rust executable based on the system
+            rust_exe = "tcp_sniffer.exe" if platform.system() == "Windows" else "tcp_sniffer"
+            rust_path = os.path.join(BASE_DIR, rust_exe)
+
+            # Launch the compiled engine in the background completely hidden
             self.process = subprocess.Popen(
-                ["cargo", "run"], 
+                [rust_path], 
                 stdin=subprocess.PIPE, 
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                cwd=BASE_DIR  # <--- REPLACED HARDCODED PATH HERE
+                cwd=BASE_DIR,
+                **HIDE_WINDOW # <--- CROSS-PLATFORM FIX
             )
             
             # Start background reader so the dashboard doesn't freeze
@@ -68,6 +236,226 @@ class TCPSniffer:
         if self.process:
             self.process.terminate()
             self.process.wait()
+
+
+def block_target():
+    target = target_entry.get()
+    if not target:
+        result_console.insert("end", "[!] Error: Please enter a target IP to block.\n")
+        return
+        
+    result_console.insert("end", f"[*] Attempting to block IP: {target}...\n")
+    
+    # ---> GRAB THE REASON FROM THE LOGGING ENGINE <---
+    block_reason = log_block_action(target)
+    
+    def run_block():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, '--block', target], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
+            app.after(0, result_console.see, "end")
+            
+            # ---> SEND THE REASON TO THE POPUP <---
+            app.after(0, lambda: show_firewall_status("BLOCKED", target, block_button, block_reason))
+            
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=run_block, daemon=True).start()
+
+def unblock_target():
+    target = target_entry.get()
+    if not target:
+        result_console.insert("end", "[!] Error: Please enter a target IP to unblock.\n")
+        return
+        
+    result_console.insert("end", f"[*] Attempting to unblock IP: {target}...\n")
+    
+    remove_block_log(target)
+    
+    def run_unblock():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, '--unblock', target], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
+            app.after(0, result_console.see, "end")
+            
+            # ---> SEND THE REASON TO THE POPUP <---
+            app.after(0, lambda: show_firewall_status("UNBLOCKED", target, unblock_button, "Manual Administrator Unblock"))
+            
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=run_unblock, daemon=True).start()
+    
+def list_blocked_targets():
+    result_console.insert("end", "[*] Querying Host Firewall and Forensic Logs...\n")
+    def run_list():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, '--list'], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            
+            # --- COMPILE THE FORENSIC LOG DISPLAY ---
+            display_text = "=== FORENSIC THREAT LOG ===\n"
+            if os.path.exists(BLOCK_LOG_FILE):
+                with open(BLOCK_LOG_FILE, "r") as f:
+                    logs = json.load(f)
+                if logs:
+                    for entry in reversed(logs): # Show newest blocks at the top
+                        display_text += f"[{entry['timestamp']}]\nIP: {entry['ip']} | Rsn: {entry['reason']}\n\n"
+                else:
+                    display_text += "No active local forensic logs found.\n\n"
+            else:
+                display_text += "No active local forensic logs found.\n\n"
+                
+            display_text += "=== RAW WINDOWS FIREWALL STATUS ===\n"
+            display_text += result.stdout
+            # -----------------------------------------
+            
+            # Trigger the pop-up with the merged list!
+            app.after(0, lambda: show_info_popup("Active Blocklist & Logs", display_text))
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=run_list, daemon=True).start()    
+def locate_target():
+    target = target_entry.get()
+    if not target:
+        result_console.insert("end", "[!] Error: Please enter a target IP to locate.\n")
+        return
+        
+    result_console.insert("end", f"[*] Triangulating geographical location for IP: {target}...\n")
+    result_console.see("end")
+
+    def display_popup(content, map_url, coords):
+        global popup_counter
+        
+        # Create a floating window
+        popup = ctk.CTkToplevel(app)
+        popup.title(f"Geolocation: {target}")
+        
+        # --- ORBITAL POSITIONING MATH ---
+        pop_width = 500
+        pop_height = 420
+        screen_width = popup.winfo_screenwidth()
+        screen_height = popup.winfo_screenheight()
+        
+        center_x = screen_width // 2
+        center_y = screen_height // 2
+        radius = 350
+        
+        angle = math.radians(popup_counter * 45)
+        
+        x = int(center_x + (radius * math.cos(angle)) - (pop_width // 2))
+        y = int(center_y + (radius * math.sin(angle)) - (pop_height // 2))
+        
+        popup.geometry(f"{pop_width}x{pop_height}+{x}+{y}")
+        popup_counter += 1
+        # ---------------------------------
+        
+        # Make it 70% transparent and lock it on top of the main UI
+        popup.attributes("-alpha", 0.70)
+        popup.attributes("-topmost", True)
+        
+        # Popup Title
+        lbl = ctk.CTkLabel(popup, text=f"📍 Location Data: {target}", font=("Arial", 16, "bold"), text_color="#00FFFF")
+        lbl.pack(pady=10)
+        
+        # Dedicated Textbox for the API results
+        txt = ctk.CTkTextbox(
+            popup, 
+            width=450, 
+            height=200, 
+            font=("Consolas", 14), 
+            fg_color="#050806", 
+            text_color="#00FF00", 
+            border_color="#17A2B8", 
+            border_width=1
+        )
+        txt.pack(padx=10, pady=5)
+        txt.insert("0.0", content)
+        txt.configure(state="disabled")  # Locks the text so it can't be edited
+        
+        # Dynamic Clickable Map Button
+        if map_url and coords:
+            map_btn = ctk.CTkButton(
+                popup, 
+                text=f"🗺️ Open Google Maps [{coords}]", 
+                font=("Arial", 14, "bold"), 
+                fg_color="#0D9488", 
+                hover_color="#0F766E", 
+                command=lambda: webbrowser.open(map_url) # Launches default web browser
+            )
+            map_btn.pack(pady=(10, 5))
+        
+        # Close button
+        btn = ctk.CTkButton(
+            popup, 
+            text="Close", 
+            font=("Arial", 14, "bold"), 
+            fg_color="#C9302C", 
+            hover_color="#AC2925", 
+            command=popup.destroy
+        )
+        btn.pack(pady=(5, 10))
+
+    def run_locate():
+        import subprocess
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, '--locate', target], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            
+            # --- Parse the Go output to extract the Map URL and Coordinates ---
+            map_url = None
+            coords = None
+            
+            for line in result.stdout.split('\n'):
+                if "Map:" in line and "http" in line:
+                    map_url = line.split("Map:")[1].strip()
+                    if "query=" in map_url:
+                        coords = map_url.split("query=")[1].strip()
+            
+            # Send the parsed data to the UI thread
+            app.after(0, lambda: display_popup(result.stdout, map_url, coords))
+            
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+            
+    threading.Thread(target=run_locate, daemon=True).start()
+
+def run_port_checker():
+    target = target_entry.get()
+    if not target:
+        result_console.insert("end", "[!] Error: Please enter a target IP or domain.\n")
+        return
+        
+    result_console.insert("end", f"[*] INITIATING HIGH-SPEED GO SCANNER ON: {target}\n")
+    
+    def execute_go_backend():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, target], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            # Trigger the pop-up with the final data!
+            app.after(0, lambda: show_info_popup(f"Port Scan: {target}", result.stdout))
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=execute_go_backend, daemon=True).start()
+
+def list_blocked_targets():
+    result_console.insert("end", "[*] Querying Host Firewall for active blocks...\n")
+    def run_list():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, '--list'], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            # Trigger the pop-up with the list!
+            app.after(0, lambda: show_info_popup("Active Blocklist", result.stdout))
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=run_list, daemon=True).start()
 
 # 1. Initialize the visual window
 app = ctk.CTk()
@@ -292,9 +680,13 @@ def execute_scan():
     result_console.insert("end", f"[*] TARGET ACQUIRED: {target}\n")
     result_console.insert("end", "[*] Executing comprehensive vulnerability scan...\n\n")
     
+    # --- ADDED: A memory buffer to store all the text for the pop-up ---
+    scan_log = []
+    
     # This is the "Walkie-Talkie" function. 
     # The backend will call this every time it finishes a single step.
     def ui_callback(text):
+        scan_log.append(text) # Save the text to our hidden buffer
         app.after(0, lambda: result_console.insert("end", text + "\n"))
         app.after(0, result_console.see, "end")
     
@@ -303,80 +695,15 @@ def execute_scan():
         try:
             # We pass the callback function into the backend
             checker.run_scan(target, callback=ui_callback)
+            
+            # --- ADDED: Spawn the scrollable pop-up when the scan finishes! ---
+            final_text = "\n".join(scan_log)
+            app.after(0, lambda: show_info_popup(f"Vulnerability Scan: {target}", final_text))
+            
         except Exception as e:
             ui_callback(f"\n[!] Critical Scan Error: {str(e)}")
             
     threading.Thread(target=background_worker, daemon=True).start()
-
-def run_port_checker():
-    target = target_entry.get()
-    if not target:
-        result_console.insert("end", "[!] Error: Please enter a target IP or domain.\n")
-        return
-        
-    result_console.delete("0.0", "end")
-    result_console.insert("end", f"[*] INITIATING HIGH-SPEED GO SCANNER ON: {target}\n")
-    result_console.insert("end", "============================================================\n\n")
-    
-    def execute_go_backend():
-        try:
-            exe_path = GO_SCANNER_PATH
-            result = subprocess.run([exe_path, target], capture_output=True, text=True, encoding='utf-8')
-            app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
-            app.after(0, result_console.see, "end")
-        except Exception as e:
-            error_message = str(e)
-            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
-    threading.Thread(target=execute_go_backend, daemon=True).start()
-
-def block_target():
-    target = target_entry.get()
-    if not target:
-        result_console.insert("end", "[!] Error: Please enter a target IP to block.\n")
-        return
-        
-    result_console.insert("end", f"[*] Attempting to block IP: {target}...\n")
-    def run_block():
-        try:
-            exe_path = GO_SCANNER_PATH
-            result = subprocess.run([exe_path, '--block', target], capture_output=True, text=True, encoding='utf-8')
-            app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
-            app.after(0, result_console.see, "end")
-        except Exception as e:
-            error_message = str(e)
-            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
-    threading.Thread(target=run_block, daemon=True).start()
-
-def unblock_target():
-    target = target_entry.get()
-    if not target:
-        result_console.insert("end", "[!] Error: Please enter a target IP to unblock.\n")
-        return
-        
-    result_console.insert("end", f"[*] Attempting to unblock IP: {target}...\n")
-    def run_unblock():
-        try:
-            exe_path = GO_SCANNER_PATH
-            result = subprocess.run([exe_path, '--unblock', target], capture_output=True, text=True, encoding='utf-8')
-            app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
-            app.after(0, result_console.see, "end")
-        except Exception as e:
-            error_message = str(e)
-            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
-    threading.Thread(target=run_unblock, daemon=True).start()
-
-def list_blocked_targets():
-    result_console.insert("end", "[*] Querying Host Firewall for active blocks...\n")
-    def run_list():
-        try:
-            exe_path = GO_SCANNER_PATH
-            result = subprocess.run([exe_path, '--list'], capture_output=True, text=True, encoding='utf-8')
-            app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
-            app.after(0, result_console.see, "end")
-        except Exception as e:
-            error_message = str(e)
-            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
-    threading.Thread(target=run_list, daemon=True).start()
 
 def locate_target():
     target = target_entry.get()
@@ -388,24 +715,34 @@ def locate_target():
     result_console.see("end")
 
     def display_popup(content, map_url, coords):
+        global popup_counter
+        
         # Create a floating window
         popup = ctk.CTkToplevel(app)
         popup.title(f"Geolocation: {target}")
         
-        # --- Top Right Positioning Math ---
+        # --- ORBITAL POSITIONING MATH ---
         pop_width = 500
         pop_height = 420
         screen_width = popup.winfo_screenwidth()
+        screen_height = popup.winfo_screenheight()
         
-        # Calculate X position (Screen Width - Popup Width - 20 pixels padding from the edge)
-        # Calculate Y position (20 pixels padding from the top)
-        x_pos = screen_width - pop_width - 20
-        y_pos = 20
+        center_x = screen_width // 2
+        center_y = screen_height // 2
         
-        # Apply the size and exact coordinates
-        popup.geometry(f"{pop_width}x{pop_height}+{x_pos}+{y_pos}")
+        # --- TIGHTER RADIUS FIX ---
+        radius = 150  # <--- Shrunk from 350 so it stays on screen!
         
-        # Make it 90% opaque (transparent) and lock it on top of the main UI
+        angle = math.radians(popup_counter * 45)
+        
+        x = int(center_x + (radius * math.cos(angle)) - (pop_width // 2))
+        y = int(center_y + (radius * math.sin(angle)) - (pop_height // 2))
+        
+        popup.geometry(f"{pop_width}x{pop_height}+{x}+{y}")
+        popup_counter += 1
+        # ---------------------------------
+        
+        # Make it 70% transparent and lock it on top of the main UI
         popup.attributes("-alpha", 0.70)
         popup.attributes("-topmost", True)
         
@@ -455,7 +792,7 @@ def locate_target():
         import subprocess
         try:
             exe_path = GO_SCANNER_PATH
-            result = subprocess.run([exe_path, '--locate', target], capture_output=True, text=True, encoding='utf-8')
+            result = subprocess.run([exe_path, '--locate', target], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
             
             # --- Parse the Go output to extract the Map URL and Coordinates ---
             map_url = None
@@ -476,6 +813,38 @@ def locate_target():
             
     threading.Thread(target=run_locate, daemon=True).start()
 
+def run_port_checker():
+    target = target_entry.get()
+    if not target:
+        result_console.insert("end", "[!] Error: Please enter a target IP or domain.\n")
+        return
+        
+    result_console.insert("end", f"[*] INITIATING HIGH-SPEED GO SCANNER ON: {target}\n")
+    
+    def execute_go_backend():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, target], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            # Trigger the pop-up with the final data!
+            app.after(0, lambda: show_info_popup(f"Port Scan: {target}", result.stdout))
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=execute_go_backend, daemon=True).start()
+
+def list_blocked_targets():
+    result_console.insert("end", "[*] Querying Host Firewall for active blocks...\n")
+    def run_list():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, '--list'], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            # Trigger the pop-up with the list!
+            app.after(0, lambda: show_info_popup("Active Blocklist", result.stdout))
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=run_list, daemon=True).start()
+
 def single_ping_target():
     target = target_entry.get()
     if not target:
@@ -486,9 +855,27 @@ def single_ping_target():
     def run_ping():
         try:
             exe_path = GO_SCANNER_PATH
-            result = subprocess.run([exe_path, '--ping', target], capture_output=True, text=True, encoding='utf-8')
-            app.after(0, lambda: result_console.insert("end", result.stdout + "\n"))
-            app.after(0, result_console.see, "end")
+            result = subprocess.run([exe_path, '--ping', target], capture_output=True, text=True, encoding='utf-8', creationflags=0x08000000)
+            # Trigger the pop-up with the ping data!
+            app.after(0, lambda: show_info_popup(f"Ping Results: {target}", result.stdout))
+        except Exception as e:
+            error_message = str(e)
+            app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
+    threading.Thread(target=run_ping, daemon=True).start()
+
+def single_ping_target():
+    target = target_entry.get()
+    if not target:
+        result_console.insert("end", "[!] Error: Please enter a target IP to ping.\n")
+        return
+        
+    result_console.insert("end", f"[*] Executing single test ping against: {target}...\n")
+    def run_ping():
+        try:
+            exe_path = GO_SCANNER_PATH
+            result = subprocess.run([exe_path, '--ping', target], capture_output=True, text=True, encoding='utf-8', **HIDE_WINDOW)
+            # Trigger the pop-up with the ping data!
+            app.after(0, lambda: show_info_popup(f"Ping Results: {target}", result.stdout))
         except Exception as e:
             error_message = str(e)
             app.after(0, lambda: result_console.insert("end", f"[!] Error: {error_message}\n"))
