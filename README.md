@@ -1,5 +1,7 @@
 # 🚀 Ghost-Hunter: Polyglot CyberSecurity Suite
 
+https://github.com/bladesdaniel-bot/Ghost-Hunter/raw/main/Full%20Demo%20Video.mp4
+
 An advanced, multi-language cybersecurity diagnostic and network analysis toolkit. This project utilizes a multi-agent architectural approach, delegating specific security tasks to specialized backend engines written in Go and Rust, all orchestrated by a sleek, animated Python holographic dashboard.
 
 https://github.com/bladesdaniel-bot/Ghost-Hunter/raw/main/Final%20Video.mp4
