@@ -3,7 +3,7 @@ use pcap::{Capture, Device};
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,14 +18,23 @@ const ALERT_MAGENTA: &str = "\x1b[35;1m";  // Attack: Brute Force
 const ALERT_RED: &str = "\x1b[31;1m";      // Violation: Cleartext
 const ALERT_FATAL: &str = "\x1b[41;37;5;1m"; // Breach: Reverse Shell
 
+// --- DB PACKET STRUCT FOR THREAD CHANNEL ---
+struct DbPacket {
+    timestamp: f64,
+    protocol: String,
+    src_ip: String,
+    src_port: u16,
+    dst_ip: String,
+    dst_port: u16,
+}
+
 pub struct TcpSniffer {
     interface_name: String,
     is_sniffing: Arc<AtomicBool>,
-    reset_threats: Arc<AtomicBool>, // NEW: Trigger for clearing threats
+    reset_threats: Arc<AtomicBool>, 
 }
 
 impl TcpSniffer {
-    /// Creates a new sniffer.
     pub fn new(interface: &str) -> Self {
         Self {
             interface_name: interface.to_string(),
@@ -34,12 +43,10 @@ impl TcpSniffer {
         }
     }
 
-    /// Triggers a reset of all threat tracking memory
     pub fn clear_threats(&self) {
         self.reset_threats.store(true, Ordering::SeqCst);
     }
 
-    /// Starts the sniffing process in a background thread.
     pub fn start<F>(&mut self, callback: F)
     where
         F: Fn(String) + Send + 'static,
@@ -53,32 +60,45 @@ impl TcpSniffer {
         let reset_threats = Arc::clone(&self.reset_threats);
         let interface = self.interface_name.clone();
 
+        // 1. Setup the isolated Database Thread Channel
+        let (db_tx, db_rx) = mpsc::channel::<DbPacket>();
+
+        // Database Worker Thread (Runs entirely separate from the sniffer)
         thread::spawn(move || {
             let conn = match Connection::open("packet_vault.db") {
                 Ok(c) => c,
-                Err(e) => {
-                    callback(format!("   [!] SQLite Error: {}", e));
-                    return;
-                }
+                Err(_) => return,
             };
 
-            // OPTIMIZATION: Write-Ahead Logging
-            if let Err(e) = conn.execute_batch(
+            let _ = conn.execute_batch(
                 "PRAGMA journal_mode = WAL;
                  PRAGMA synchronous = NORMAL;
                  PRAGMA temp_store = MEMORY;"
-            ) {
-                callback(format!("   [!] SQLite Pragma Error: {}", e));
-            }
+            );
 
-            if let Err(e) = conn.execute(
+            let _ = conn.execute(
                 "CREATE TABLE IF NOT EXISTS packets (timestamp REAL, protocol TEXT, src_ip TEXT, src_port TEXT, dst_ip TEXT, dst_port TEXT)",
                 [],
-            ) {
-                callback(format!("   [!] SQLite schema error: {}", e));
-                return;
-            }
+            );
 
+            // Wait for packets to arrive via the channel and log them
+            for pkt in db_rx {
+                let _ = conn.execute(
+                    "INSERT INTO packets VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![
+                        pkt.timestamp,
+                        pkt.protocol,
+                        pkt.src_ip,
+                        pkt.src_port.to_string(),
+                        pkt.dst_ip,
+                        pkt.dst_port.to_string()
+                    ],
+                );
+            }
+        });
+
+        // 2. Setup the High-Speed Capture Thread
+        thread::spawn(move || {
             let mut active_flows: HashMap<String, u64> = HashMap::new();
             
             // --- THREAT TRACKERS ---
@@ -88,7 +108,7 @@ impl TcpSniffer {
 
             let mut cap = match Capture::from_device(interface.as_str())
                 .unwrap()
-                .promisc(true) // Captures traffic for ALL MAC addresses, not just the host's
+                .promisc(true) 
                 .timeout(100)
                 .open()
             {
@@ -99,13 +119,16 @@ impl TcpSniffer {
                 }
             };
 
+            let mut packet_counter = 0u64;
+
             while is_sniffing.load(Ordering::SeqCst) {
-                // Check if the user triggered a memory reset
+                // Check if the user triggered a memory reset manually
                 if reset_threats.load(Ordering::SeqCst) {
                     active_flows.clear();
                     syn_tracker.clear();
                     port_scan_tracker.clear();
                     brute_force_tracker.clear();
+                    packet_counter = 0;
                     
                     reset_threats.store(false, Ordering::SeqCst);
                     callback(format!("\n   [✓] {}THREAT TRACKERS RESET. READY FOR NEW ATTACKS.{}", ALERT_CYAN, COLOR_RESET));
@@ -113,6 +136,17 @@ impl TcpSniffer {
 
                 match cap.next_packet() {
                     Ok(packet) => {
+                        packet_counter += 1;
+                        
+                        // --- RAM PRUNER (Auto-Flush Memory every 10k packets to prevent leaks) ---
+                        if packet_counter >= 10_000 {
+                            active_flows.clear();
+                            syn_tracker.clear();
+                            port_scan_tracker.clear();
+                            brute_force_tracker.clear();
+                            packet_counter = 0;
+                        }
+
                         if let Ok(value) = SlicedPacket::from_ethernet(&packet.data) {
                             let mut src_ip = String::new();
                             let mut dst_ip = String::new();
@@ -130,20 +164,17 @@ impl TcpSniffer {
                                 }
                             }
 
-                            // If it's not even an IP packet (e.g., ARP, STP), we skip it for this DB schema
                             if src_ip.is_empty() {
                                 continue;
                             }
 
                             let mut src_port = 0u16;
                             let mut dst_port = 0u16;
-                            let mut protocol = "UNKNOWN";
-                            
+                            let protocol;                            
                             let mut syn_flag = false;
                             let mut ack_flag = false;
                             let mut payload: &[u8] = &[];
 
-                            // Extract transport layer if it exists
                             if let Some(transport) = value.transport {
                                 match transport {
                                     TransportSlice::Tcp(tcp) => {
@@ -174,7 +205,6 @@ impl TcpSniffer {
                                     }
                                 }
                             } else {
-                                // Packet has IP layer but no recognized transport layer
                                 protocol = "IP"; 
                             }
 
@@ -183,18 +213,15 @@ impl TcpSniffer {
                                 .unwrap()
                                 .as_secs_f64();
 
-                            // Ports will just be "0" for ICMP/Raw IP traffic, which is perfectly valid
-                            let _ = conn.execute(
-                                "INSERT INTO packets VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                                rusqlite::params![
-                                    timestamp,
-                                    protocol,
-                                    src_ip,
-                                    src_port.to_string(),
-                                    dst_ip,
-                                    dst_port.to_string()
-                                ],
-                            );
+                            // Instead of blocking to write to DB, shoot the packet down the channel instantly!
+                            let _ = db_tx.send(DbPacket {
+                                timestamp,
+                                protocol: protocol.to_string(),
+                                src_ip: src_ip.clone(),
+                                src_port,
+                                dst_ip: dst_ip.clone(),
+                                dst_port,
+                            });
 
                             let flow_id = format!("{}:{}-{}:{}", src_ip, src_port, dst_ip, dst_port);
                             let count = active_flows.entry(flow_id.clone()).or_insert(0);
@@ -202,7 +229,6 @@ impl TcpSniffer {
 
                             // --- THREAT DETECTION LOGIC ---
 
-                            // 1. Cleartext Protocol Violation (FTP/Telnet)
                             if dst_port == 21 || dst_port == 23 || src_port == 21 || src_port == 23 {
                                 callback(format!(
                                     "   [!!!] {}UNSAFE PROTOCOL DETECTED{}: {}{}{}{} -> {}:{}",
@@ -210,7 +236,6 @@ impl TcpSniffer {
                                 ));
                             }
                             
-                            // 2. SYN Flood (DoS) - Only triggers on TCP due to flag checks
                             if syn_flag && !ack_flag {
                                 let syn_count = syn_tracker.entry(src_ip.clone()).or_insert(0);
                                 *syn_count += 1;
@@ -222,7 +247,6 @@ impl TcpSniffer {
                                 }
                             }
 
-                            // 3. Port Scanning
                             if src_port != 0 && dst_port != 0 {
                                 let scanned_ports = port_scan_tracker.entry(src_ip.clone()).or_insert(Vec::new());
                                 if !scanned_ports.contains(&dst_port) {
@@ -237,7 +261,6 @@ impl TcpSniffer {
                                 }
                             }
 
-                            // 4. Brute Force Attempts (SSH, RDP, MySQL)
                             if (dst_port == 22 || dst_port == 3389 || dst_port == 3306) && *count == 1 {
                                 let bf_count = brute_force_tracker.entry(src_ip.clone()).or_insert(0);
                                 *bf_count += 1;
@@ -249,10 +272,14 @@ impl TcpSniffer {
                                 }
                             }
 
-                            // 5. Reverse Shell Detection (Payload Inspection)
+                            // ZERO-ALLOCATION Reverse Shell Detection! 
+                            // Scans raw byte slices directly without allocating a String to the heap
                             if !payload.is_empty() {
-                                let payload_str = String::from_utf8_lossy(payload).to_lowercase();
-                                if payload_str.contains("cmd.exe") || payload_str.contains("/bin/bash") || payload_str.contains("powershell") {
+                                let is_rev_shell = payload.windows(7).any(|w| w.eq_ignore_ascii_case(b"cmd.exe"))
+                                    || payload.windows(9).any(|w| w.eq_ignore_ascii_case(b"/bin/bash"))
+                                    || payload.windows(10).any(|w| w.eq_ignore_ascii_case(b"powershell"));
+
+                                if is_rev_shell {
                                     callback(format!(
                                         "   [!!!] {}REVERSE SHELL ACTIVE{} : {}{}{}{} -> {}",
                                         ALERT_FATAL, COLOR_RESET, ANSI_BLINK, src_ip, ANSI_BLINK_OFF, COLOR_RESET, dst_ip
@@ -290,7 +317,6 @@ impl TcpSniffer {
 fn main() {
     let devices = Device::list().unwrap();
     
-    // Strict selection: Hunt specifically for the physical Wi-Fi adapter
     let default_device = devices.iter()
         .find(|d| {
             let desc = d.desc.as_deref().unwrap_or("");
@@ -309,7 +335,6 @@ fn main() {
         println!("{}", log_line);
     });
 
-    // Interactive command loop instead of just sleeping
     loop {
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() {
