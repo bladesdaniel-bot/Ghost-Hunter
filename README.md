@@ -86,3 +86,37 @@ https://github.com/bladesdaniel-bot/Ghost-Hunter/raw/main/Blocked%20Ip%20And%20I
 *   `main.go`: The Go source code handling port scanning, TCP pings, firewall rules, and geolocation.
 *   `Cargo.toml`, `build.rs`, & `src/tcp_sniffer.rs`: The Rust backend utilizing `pcap`, `etherparse`, and `rusqlite` for live packet analysis.
 *   **Animation Utilities:** Custom Python/Pillow scripts used to surgically remove backgrounds and generate multi-frame animations for the UI elements.
+
+## 📂 Codebase Structure
+
+Ghost-Hunter/
+├── Animation file/                 # UI assets and multi-frame animation sequences
+│   ├── block ip animation/         # Visual feedback for firewall block events
+│   ├── Insane Hacker Background/   # Animated holographic background frames
+│   ├── locate ip animation/        # Geolocation lookup HUD radar sweep
+│   ├── port checker animation/     # Port scanning telemetry activity
+│   ├── show blocklist animation/   # Active blacklist loading sequence
+│   ├── test ping animation/        # Network latency and ping pulse
+│   └── unblock ip animation/       # Rule de-provisioning sequence
+├── npcap-sdk/                      # Native Npcap packet capture SDK
+│   ├── Include/                    # C/C++ Header files for Rust FFI bindings
+│   ├── Lib/                        # Compiled libraries for linking the sniffer
+│   └── wpcap/                      # Offline HTML API documentation (Omitted for brevity)
+├── src/                            # Rust low-level core
+│   └── tcp_sniffer.rs              # High-throughput packet capture & threat engine
+├── Auth_Vault/                     # Secure directory for IAM configuration
+│   └── auth_vault.json             # PBKDF2 HMAC-SHA256 locked master configuration
+├── auth_manager.py                 # Identity Access Management (IAM) security gateway
+├── build.rs                        # Rust build script targeting npcap-sdk/Lib
+├── Cargo.toml                      # Rust dependencies & package manifest
+├── Cargo.lock                      # Deterministic dependency lockfile
+├── config.py                       # Global network parameters, timeouts, & port lists
+├── dashboard.py                    # Primary GUI orchestrator & Tkinter HUD
+├── Forensic_Block_Logs.json        # Dynamic 12-hour timestamped active threat and firewall block log
+├── go.mod                          # Go module definitions
+├── main.go                         # Go engine (concurrent scanning & firewall manipulation)
+├── Npcap_Guide.html                # Local setup instructions for driver configuration
+├── packet_vault.db                 # Local SQLite WAL database for intercepted telemetry
+├── SDK_CHANGELOG.md                # Npcap library revision tracking
+├── SecurityScanner.exe             # Compiled standalone executable artifact
+└── vulnerability_checker.py        # Middleware scanner & NSE integration
