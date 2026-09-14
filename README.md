@@ -21,6 +21,8 @@ This tool breaks down complex security operations into three distinct language e
 ### 🔐 Zero-Knowledge Security Gateway (IAM)
 * **Offline Identity Access Management:** The application is locked behind a cryptographically secure gateway utilizing PBKDF2 HMAC-SHA256 hashing (100,000 iterations). 
 * **Disaster Recovery Protocol:** Features an auto-generated, human-readable 16-character `CYBR-` recovery key system. The key is never stored in plaintext, utilizing a dual-hash JSON storage vault to prevent local memory extraction.
+* **Frictionless Authentication UX:** Engineered dynamic window-rendering delays to resolve CustomTkinter GUI race conditions, guaranteeing immediate input auto-focus the exact millisecond the gateway launches.
+* **Intelligent Keystroke Routing:** Implemented event-driven `<Return>` key bindings that intercept premature form submissions and seamlessly route cursor focus between multiple input fields during the initial vault setup.
 
 ### 🖥️ Holographic GUI Command Dashboard
 * **Interactive UI:** Built with CustomTkinter, featuring real-time interactive threat consoles, regex-powered clickable IP targeting for instant countermeasures, and custom multi-frame animations (breathing backgrounds, EKG pings, rotating shields).
@@ -51,7 +53,8 @@ https://github.com/bladesdaniel-bot/Ghost-Hunter/raw/main/Before%20Adjustments%2
 https://github.com/bladesdaniel-bot/Ghost-Hunter/raw/main/After%20Adjustments%20Were%20Made%20To%20Compile%20Tcp%20Packets.mp4
 
 ### 🐹 Threat Neutralization & Active Firewall Control
-Instantly block or unblock active threats across the host operating system (Windows `netsh` or Linux `iptables`) using the Go binary. Actively wipes duplicate rules and aggressively blocks both INBOUND and OUTBOUND traffic.
+* **Instant OS-Level Blocking:** Instantly block or unblock active threats across the host operating system (Windows `netsh` or Linux `iptables`) using the Go binary. Actively wipes duplicate rules and aggressively blocks both INBOUND and OUTBOUND traffic.
+* **Forensic Threat Logging:** Dynamically stamps and logs manual administrator blocks with 12-hour timestamps and specific threat reasons (e.g., "SYN FLOOD Attack") into a local JSON forensic vault, seamlessly integrated into the UI's active firewall auditing pop-ups.
 
 https://github.com/bladesdaniel-bot/Ghost-Hunter/raw/main/Blocked%20Ip%20And%20It%20Coudnt%20Come%20Back%20Through%20Successfully.mp4
 
